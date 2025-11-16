@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 class ReviewCard extends StatelessWidget {
   final String username;
   final String userAvatar;
@@ -29,7 +30,9 @@ class ReviewCard extends StatelessWidget {
               Row(
                 children: [
                   CircleAvatar(
-                    backgroundImage: userAvatar.startsWith('http') || userAvatar.startsWith('https')
+                    backgroundImage:
+                        userAvatar.startsWith('http') ||
+                            userAvatar.startsWith('https')
                         ? NetworkImage(userAvatar) as ImageProvider
                         : AssetImage(userAvatar),
                     radius: 18,
@@ -88,4 +91,3 @@ class ReviewCard extends StatelessWidget {
     );
   }
 }
-

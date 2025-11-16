@@ -14,6 +14,31 @@ class Profile extends StatefulWidget {
 class _ProfileState extends State<Profile> {
   bool darkMode = false;
   bool notifications = false;
+  // Add migration guard and helper to copy legacy user doc to users/{uid}
+  bool _attemptedMigration = false;
+  Future<void> _migrateLegacyUserDoc(String uid) async {
+    try {
+      final users = FirebaseFirestore.instance.collection('users');
+      final q = await users.where('authUid', isEqualTo: uid).limit(1).get();
+      if (q.docs.isNotEmpty) {
+        final data = q.docs.first.data();
+        await users.doc(uid).set(data, SetOptions(merge: true));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile restored')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to restore profile: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _attemptedMigration = true);
+    }
+  }
   Future<void> _logout() async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -47,9 +72,17 @@ class _ProfileState extends State<Profile> {
       );
     }
     final users = FirebaseFirestore.instance.collection('users');
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: users.where('authUid', isEqualTo: uid).limit(1).snapshots(),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: users.doc(uid).snapshots(),
       builder: (context, snap) {
+        if (snap.hasError) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Failed to load profile'),
+            ),
+          );
+        }
         if (snap.connectionState == ConnectionState.waiting) {
           return const Card(
             child: Padding(
@@ -58,7 +91,12 @@ class _ProfileState extends State<Profile> {
             ),
           );
         }
-        if (!snap.hasData || snap.data!.docs.isEmpty) {
+        if (!snap.hasData || !(snap.data?.exists ?? false)) {
+          // Attempt one-time migration from legacy authUid-based doc
+          if (!_attemptedMigration) {
+            // Schedule migration without rebuilding loops
+            Future.microtask(() => _migrateLegacyUserDoc(uid));
+          }
           return const Card(
             child: Padding(
               padding: EdgeInsets.all(24),
@@ -66,8 +104,7 @@ class _ProfileState extends State<Profile> {
             ),
           );
         }
-        final doc = snap.data!.docs.first;
-        final data = doc.data();
+        final data = snap.data!.data()!;
         final fullName = (data['fullName'] as String?)?.trim();
         final email = (data['email'] as String?)?.trim();
         final phone = (data['phoneNumber'] as String?)?.trim();
@@ -215,12 +252,24 @@ class _ProfileState extends State<Profile> {
                           )
                           .snapshots(),
                       builder: (context, snapshot) {
-                        int reviewCount = 0;
-                        if (snapshot.hasData) {
-                          reviewCount = snapshot.data!.docs.length;
+                        if (snapshot.hasError) {
+                          return Text(
+                            'My Reviews (0)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 17,
+                            ),
+                          );
+                        }
+                        final count = snapshot.data?.docs.length ?? 0;
+                        if (snapshot.connectionState == ConnectionState.waiting && count == 0) {
+                          return const SizedBox(
+                            height: 20,
+                            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                          );
                         }
                         return Text(
-                          'My Reviews (${reviewCount})',
+                          'My Reviews (${count})',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 17,
@@ -240,10 +289,26 @@ class _ProfileState extends State<Profile> {
                         .limit(2)
                         .snapshots(),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Center(child: CircularProgressIndicator());
+                      if (snapshot.hasError) {
+                        return Card(
+                          elevation: 0.5,
+                          margin: EdgeInsets.symmetric(vertical: 4),
+                          child: SizedBox(
+                            height: 80,
+                            child: Center(
+                              child: Text(
+                                'Failed to load reviews',
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                            ),
+                          ),
+                        );
                       }
-                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      final docs = snapshot.data?.docs ?? const [];
+                      if (snapshot.connectionState == ConnectionState.waiting && docs.isEmpty) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (docs.isEmpty) {
                         return Card(
                           elevation: 0.5,
                           margin: EdgeInsets.symmetric(vertical: 4),
@@ -259,7 +324,7 @@ class _ProfileState extends State<Profile> {
                         );
                       }
                       return Column(
-                        children: snapshot.data!.docs.map((doc) {
+                        children: docs.map((doc) {
                           final data = doc.data() as Map<String, dynamic>;
                           return FutureBuilder<DocumentSnapshot>(
                             future: FirebaseFirestore.instance
@@ -268,11 +333,10 @@ class _ProfileState extends State<Profile> {
                                 .get(),
                             builder: (context, pgSnapshot) {
                               String pgName = 'Unknown PG';
-                              if (pgSnapshot.hasData &&
-                                  pgSnapshot.data!.exists) {
-                                final pgData =
-                                    pgSnapshot.data!.data()
-                                        as Map<String, dynamic>;
+                              if (pgSnapshot.hasError) {
+                                pgName = 'Unknown PG';
+                              } else if (pgSnapshot.hasData && pgSnapshot.data!.exists) {
+                                final pgData = pgSnapshot.data!.data() as Map<String, dynamic>;
                                 pgName = pgData['name'] ?? 'Unknown PG';
                               }
                               return Card(
@@ -300,11 +364,7 @@ class _ProfileState extends State<Profile> {
                                             5,
                                             (i) => Icon(
                                               Icons.star,
-                                              color:
-                                                  i <
-                                                      (data['rating'] as num? ??
-                                                              0)
-                                                          .toDouble()
+                                              color: i < (data['rating'] as num? ?? 0).toDouble()
                                                   ? Colors.amber
                                                   : Colors.grey[300],
                                               size: 19,

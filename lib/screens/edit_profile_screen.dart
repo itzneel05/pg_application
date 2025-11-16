@@ -43,11 +43,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
         return;
       }
       final users = FirebaseFirestore.instance.collection('users');
-      final q = await users.where('authUid', isEqualTo: uid).limit(1).get();
-      if (q.docs.isNotEmpty) {
-        final doc = q.docs.first;
-        _userDocRef = doc.reference;
-        final data = doc.data();
+      final docRef = users.doc(uid);
+      final doc = await docRef.get();
+      if (doc.exists) {
+        _userDocRef = docRef;
+        final data = doc.data() as Map<String, dynamic>;
         _nameController.text = (data['fullName'] as String?)?.trim() ?? '';
         _emailController.text = (data['email'] as String?)?.trim() ?? '';
         _phoneController.text = (data['phoneNumber'] as String?)?.trim() ?? '';
@@ -339,23 +339,24 @@ Widget _avatarFromStream() {
     );
   }
   final users = FirebaseFirestore.instance.collection('users');
-  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: users.where('authUid', isEqualTo: uid).limit(1).snapshots(),
+  return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+    stream: users.doc(uid).snapshots(),
     builder: (context, snap) {
       String? displayUrl;
-      if (snap.hasData && snap.data!.docs.isNotEmpty) {
-        final data = snap.data!.docs.first.data();
+      if (snap.hasError) {
+        // Fall back to default avatar on error
+        displayUrl = null;
+      } else if (snap.hasData && snap.data!.exists) {
+        final data = snap.data!.data()!;
         final url = (data['photoUrl'] as String?)?.trim();
         final updatedAt = (data['photoUpdatedAt'] as Timestamp?)?.toDate();
         if (url != null && url.isNotEmpty) {
-          final v =
-              updatedAt?.millisecondsSinceEpoch ??
-              DateTime.now().millisecondsSinceEpoch;
+          final v = updatedAt?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
           displayUrl = '$url?v=$v';
         }
       }
       return CircleAvatar(
-        key: ValueKey(displayUrl), 
+        key: ValueKey(displayUrl),
         radius: 44,
         backgroundColor: Colors.grey[300],
         backgroundImage: (displayUrl != null) ? NetworkImage(displayUrl) : null,

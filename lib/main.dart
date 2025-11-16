@@ -42,30 +42,30 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class CheckAccountLogin extends StatelessWidget {
-  const CheckAccountLogin({super.key});
+// class CheckAccountLogin extends StatelessWidget {
+//   const CheckAccountLogin({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        // Handle loading state
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
+//   @override
+//   Widget build(BuildContext context) {
+//     return StreamBuilder<User?>(
+//       stream: FirebaseAuth.instance.authStateChanges(),
+//       builder: (context, snapshot) {
+//         // Handle loading state
+//         if (snapshot.connectionState == ConnectionState.waiting) {
+//           return const Scaffold(
+//             body: Center(child: CircularProgressIndicator()),
+//           );
+//         }
 
-        // If user is logged in (snapshot has data), go to homepage
-        if (!snapshot.hasData) {
-          return const Login();
-        }
-        if (snapshot.data!.uid == '8grHNpbvJnUaOoACbtAs9HXJ5zx1') {
-          return const MainPageAdmin();
-        }
-        return const MainPage();
-      },
-    );
-  }
-}
+//         // If user is logged in (snapshot has data), go to homepage
+//         if (!snapshot.hasData) {
+//           return const Login();
+//         }
+//         if (snapshot.data!.uid == '8grHNpbvJnUaOoACbtAs9HXJ5zx1') {
+//           return const MainPageAdmin();
+//         }
+//         return const MainPage();
+//       },
+//     );
+//   }
+// }
